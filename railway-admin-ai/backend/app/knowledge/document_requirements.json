@@ -1,0 +1,104 @@
+{
+  "Promotion": {
+    "mandatory": [
+      "Service Book",
+      "APAR (last 3 years)",
+      "Departmental Exam Result"
+    ],
+    "conditional": {
+      "if_penalty_exists": ["Penalty Order"]
+    },
+    "rule_citations": ["PROM_001", "PROM_004", "PROM_006"],
+    "reasons": {
+      "Service Book": "Required under Rule PROM_001 to verify service period and grade history.",
+      "APAR (last 3 years)": "Required under Rule PROM_004 to verify benchmark performance rating.",
+      "Departmental Exam Result": "Required under Rule PROM_006 to confirm examination clearance.",
+      "Penalty Order": "Required under Rule DISC_003 to assess disciplinary status."
+    }
+  },
+  "Leave.Earned": {
+    "mandatory": ["Leave Application", "Service Book"],
+    "conditional": {},
+    "rule_citations": ["LEAVE_001"],
+    "reasons": {
+      "Leave Application": "Required to initiate the leave request.",
+      "Service Book": "Required to verify leave balance and service record."
+    }
+  },
+  "Leave.Medical": {
+    "mandatory": ["Leave Application", "Medical Certificate", "Service Book"],
+    "conditional": {
+      "if_hospitalized": ["Hospital Discharge Summary"]
+    },
+    "rule_citations": ["LEAVE_005", "LEAVE_006"],
+    "reasons": {
+      "Leave Application": "Required to initiate the leave request.",
+      "Medical Certificate": "Required under Rule LEAVE_005 from a recognized medical officer.",
+      "Service Book": "Required to verify leave balance.",
+      "Hospital Discharge Summary": "Required under Rule LEAVE_006 when hospitalization exceeds 48 hours."
+    }
+  },
+  "Increment": {
+    "mandatory": ["Service Book"],
+    "conditional": {
+      "if_penalty_exists": ["Penalty Order"]
+    },
+    "rule_citations": ["INCR_001"],
+    "reasons": {
+      "Service Book": "Required to verify service continuity and existing pay level.",
+      "Penalty Order": "Required to check if increment has been withheld by order."
+    }
+  },
+  "Discipline": {
+    "mandatory": ["Service Book", "Charge Sheet"],
+    "conditional": {
+      "if_appealing": ["Appeal Letter", "Original Penalty Order"]
+    },
+    "rule_citations": ["DISC_001", "DISC_002"],
+    "reasons": {
+      "Service Book": "Required to verify employee's complete service and disciplinary history.",
+      "Charge Sheet": "Required to review the nature and basis of the current charge.",
+      "Appeal Letter": "Required to process the appeal against the penalty order.",
+      "Original Penalty Order": "Required to review the order being appealed."
+    }
+  },
+  "Transfer": {
+    "mandatory": ["Service Book", "Transfer Application"],
+    "conditional": {
+      "if_medical_grounds": ["Medical Certificate"],
+      "if_spouse_transfer": ["Spouse Transfer Order"]
+    },
+    "rule_citations": ["TRNF_001"],
+    "reasons": {
+      "Service Book": "Required to verify current posting and transfer history.",
+      "Transfer Application": "Required as the formal application for transfer.",
+      "Medical Certificate": "Required when transfer is sought on medical grounds.",
+      "Spouse Transfer Order": "Required when seeking transfer on grounds of spouse posting."
+    }
+  },
+  "DeptExam": {
+    "mandatory": ["Service Book", "Exam Application"],
+    "conditional": {},
+    "rule_citations": ["EXAM_001"],
+    "reasons": {
+      "Service Book": "Required to verify eligibility criteria for the examination.",
+      "Exam Application": "Required as the formal application to appear in the examination."
+    }
+  },
+  "Retirement": {
+    "mandatory": [
+      "Service Book",
+      "Pension Application",
+      "Nomination Form",
+      "Last Pay Certificate"
+    ],
+    "conditional": {},
+    "rule_citations": ["RETR_001", "PENS_001"],
+    "reasons": {
+      "Service Book": "Required to verify qualifying service for pension.",
+      "Pension Application": "Required as formal application for pension benefits.",
+      "Nomination Form": "Required to designate family pension nominee.",
+      "Last Pay Certificate": "Required to calculate pensionable pay."
+    }
+  }
+}
