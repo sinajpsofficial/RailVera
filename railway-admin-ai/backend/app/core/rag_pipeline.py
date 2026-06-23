@@ -33,8 +33,12 @@ class RAGPipeline:
         logger.info(f"CrossEncoder device set to: {device}")
         self.reranker = CrossEncoder("BAAI/bge-reranker-base", device=device)
 
-    def embed_text(self, text: str) -> List[float]:
+    def _embed_text_sync(self, text: str) -> List[float]:
         return self.embedder.encode(text, normalize_embeddings=True).tolist()
+
+    async def embed_text(self, text: str) -> List[float]:
+        import asyncio
+        return await asyncio.to_thread(self._embed_text_sync, text)
 
     async def embed_all_rules(self, db: AsyncSession) -> int:
         """
@@ -43,6 +47,7 @@ class RAGPipeline:
         """
         from app.models.rule import Rule
         from sqlalchemy import select
+        import asyncio
 
         result = await db.execute(select(Rule))
         rules = result.scalars().all()
@@ -50,8 +55,11 @@ class RAGPipeline:
         embedded_count = 0
         for rule in rules:
             text = f"{rule.rule_name}. {rule.description}"
-            rule.embedding = self.embed_text(text)
+            rule.embedding = await self.embed_text(text)
             embedded_count += 1
+            # Cooperatively yield control back to the event loop every few items
+            if embedded_count % 5 == 0:
+                await asyncio.sleep(0.01)
 
         await db.commit()
         logger.info(f"Embedded {embedded_count} rules successfully.")
@@ -67,7 +75,8 @@ class RAGPipeline:
         Find the most relevant rules for a question.
         Returns a list of rules with rule_id, rule_name, description, score.
         """
-        query_embedding = self.embed_text(query)
+        import asyncio
+        query_embedding = await self.embed_text(query)
 
         # Step 1: Vector similarity search (top 20)
         from app.models.rule import Rule
@@ -89,7 +98,7 @@ class RAGPipeline:
 
         # Step 2: Re-rank using bge-reranker CrossEncoder
         pairs = [[query, row.raw_text] for row in candidates]
-        rerank_scores = self.reranker.predict(pairs)
+        rerank_scores = await asyncio.to_thread(self.reranker.predict, pairs)
 
         # CrossEncoder predict returns a numpy array, convert to floats list
         ranked = sorted(
@@ -109,3 +118,4 @@ class RAGPipeline:
             for row, score in ranked[:top_k]
             if float(score) > 0.30  # discard irrelevant results
         ]
+

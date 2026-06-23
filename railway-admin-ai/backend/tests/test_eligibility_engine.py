@@ -1,16 +1,36 @@
 import os
 import sys
+import pytest
+import asyncio
 
 # Ensure backend root is in search path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import asyncio
+# Use in-memory SQLite for tests to avoid asyncpg issues
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+
+# Use selector event loop on Windows to avoid proactor issues
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from app.core.eligibility_engine import EligibilityEngine
 from app.database.connection import AsyncSessionLocal
 
+class StubRAG:
+    async def retrieve(self, query: str, db, top_k: int = 5):
+        # Return empty list to simulate no rules found
+        return []
+
+    def embed_text(self, text: str):
+        return []
+
+    async def embed_all_rules(self, db):
+        return 0
+
+@pytest.mark.asyncio
 async def test_eligibility_engine():
     engine = EligibilityEngine()
-
+    engine.rag = StubRAG()
     print("--- Running Eligibility Engine Coordination Tests ---")
 
     async with AsyncSessionLocal() as db:
@@ -64,8 +84,10 @@ async def test_eligibility_engine():
         print(res3.administrative_notes)
 
         assert res3.decision in ["Eligible", "Not Eligible", "Cannot Determine"]
-        
+
     print("\nAll Eligibility Engine tests completed successfully!")
+    # Allow async cleanup before event loop closes
+    await asyncio.sleep(0.1)
 
 if __name__ == "__main__":
     asyncio.run(test_eligibility_engine())
