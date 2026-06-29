@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { getMe, createCase, getCaseDetails, uploadDocument, runEligibilityCheck, generateReport, getReportDownloadUrl, logout, sendCaseReply } from "@/lib/api";
+import { getMe, createCase, getCaseDetails, uploadDocument, runEligibilityCheck, generateReport, getReportDownloadUrl, logout, sendCaseReply, getMyCases, getPendingCases, getCaseConversation, reviewCase } from "@/lib/api";
 
 import DocumentStatusTracker from "@/components/documents/DocumentStatusTracker";
 import DocumentDemandNotice from "@/components/chat/DocumentDemandNotice";
@@ -59,6 +59,14 @@ export default function ChatPage() {
   const [compilingReport, setCompilingReport] = useState(false);
   const [reportId, setReportId] = useState<string | null>(null);
 
+  // Cases lists & Review states
+  const [myCases, setMyCases] = useState<any[]>([]);
+  const [pendingCases, setPendingCases] = useState<any[]>([]);
+  const [reviewStatus, setReviewStatus] = useState<string>("draft");
+  const [reviewNotes, setReviewNotes] = useState<string | null>(null);
+  const [reviewNotesInput, setReviewNotesInput] = useState<string>("");
+  const [submittingReview, setSubmittingReview] = useState<boolean>(false);
+
   // Scroll to bottom helper
   const chatEndRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -85,6 +93,135 @@ export default function ChatPage() {
     fetchMe();
   }, [router]);
 
+  // Refresh user and pending cases queues
+  const refreshCaseLists = async () => {
+    try {
+      const myRes = await getMyCases();
+      setMyCases(myRes);
+      // Only admins fetch pending reviews queue
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      if (token) {
+        // Fetch current user details if not yet fetched to check role
+        let role = currentUser?.role;
+        if (!role) {
+          try {
+            const me = await getMe();
+            role = me.role;
+          } catch {}
+        }
+        if (role === "admin") {
+          const pendRes = await getPendingCases();
+          setPendingCases(pendRes);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to refresh case lists:", err);
+    }
+  };
+
+  // Load user's case lists on user load
+  useEffect(() => {
+    if (currentUser) {
+      refreshCaseLists();
+    }
+  }, [currentUser]);
+
+  // Load a case and its conversation history into the main view
+  const handleLoadCase = async (id: string) => {
+    setLoadingMessage(true);
+    try {
+      const details = await getCaseDetails(id);
+      setCaseId(details.id);
+      setSelectedDomain(details.domain);
+      setCaseStatus(details.status);
+      setReviewStatus(details.review_status);
+      setReviewNotes(details.review_notes);
+      setSubmittedDocs(details.submitted_documents || []);
+      setMissingDocs(details.missing_documents || []);
+      setDecisionOutcome(details.decision);
+      setReportId(null); // Reset report since it's a new loaded case
+      
+      // Get conversation history
+      const history = await getCaseConversation(id);
+      const formattedHistory: Message[] = history.map((h: any) => ({
+        id: h.id,
+        role: h.role,
+        content: h.message,
+        type: h.message_type === "followup" ? "followup" : "text",
+        rules_cited: h.rules_cited || []
+      }));
+      setMessages(formattedHistory);
+
+      if (details.status === "blocked" && details.missing_documents?.length > 0) {
+        setDemandNotice(
+          `╔══════════════════════════════════════════════════════╗\n` +
+          `║         DOCUMENT REQUIREMENT NOTICE                  ║\n` +
+          `║         Case: ${details.domain} | Employee ID: ${details.user_id}     ║\n` +
+          `╚══════════════════════════════════════════════════════╝\n\n` +
+          `The following documents are missing and required:\n` +
+          details.missing_documents.map((d: string) => `  - ${d} * REQUIRED`).join("\n") +
+          `\n\nPlease upload the files using the sidebar to proceed.`
+        );
+      } else {
+        setDemandNotice(null);
+      }
+      setCaseCreated(true);
+    } catch (err: any) {
+      alert(`Failed to load case: ${err.message}`);
+    } finally {
+      setLoadingMessage(false);
+    }
+  };
+
+  // Submit human-in-the-loop approval or rejection
+  const handleReviewCase = async (action: "approve" | "reject") => {
+    if (!caseId) return;
+    if (!reviewNotesInput.trim() || reviewNotesInput.trim().length < 10) {
+      alert("Please provide at least 10 characters of justification/notes for the review decision.");
+      return;
+    }
+    setSubmittingReview(true);
+    try {
+      const res = await reviewCase(caseId, action, reviewNotesInput.trim());
+      setReviewStatus(res.review_status);
+      setReviewNotes(res.review_notes);
+      setReviewNotesInput("");
+
+      // Update local case state
+      const details = await getCaseDetails(caseId);
+      setCaseStatus(details.status);
+
+      // Append official review statement message in conversation UI
+      setMessages(prev => [
+        ...prev,
+        {
+          id: `review-${Date.now()}`,
+          role: "assistant",
+          content: `Case Decision Recorded\n\nThis case has been ${action === "approve" ? "approved" : "rejected"} by Personnel Officer ${currentUser?.name}.\n\nOfficer notes: ${res.review_notes}`,
+          type: "text"
+        }
+      ]);
+
+      await refreshCaseLists();
+    } catch (err: any) {
+      alert(`Failed to submit review: ${err.message}`);
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
+
+  const handleBackToCases = () => {
+    setCaseId(null);
+    setCaseCreated(false);
+    setMessages([]);
+    setDemandNotice(null);
+    setDecisionOutcome(null);
+    setReportId(null);
+    setChatInput("");
+    refreshCaseLists();
+  };
+
 
   // Handle case initialization
   const handleStartCase = async (e: React.FormEvent) => {
@@ -105,16 +242,16 @@ export default function ChatPage() {
         {
           id: `usr-${Date.now()}`,
           role: "user",
-          content: `Initial Case Query [Domain: ${selectedDomain}]: ${caseQuery.trim()}`,
+          content: caseQuery.trim(),
           type: "text"
         },
         {
           id: `ast-${Date.now()}`,
           role: "assistant",
-          content: `Case created successfully. Registered Case ID: ${dbCase.id}.\n\nRequired checklist: ${dbCase.required_documents.join(", ")}.\n` +
-                   (dbCase.status === "blocked" 
-                     ? "⚠ Note: Evaluation is currently BLOCKED pending document submission." 
-                     : "Checklist satisfied. We can evaluate eligibility."),
+          content: `Your case has been registered successfully.\n\nCase ID: ${dbCase.id}\nDomain: ${selectedDomain}\n\nRequired documents for this case: ${dbCase.required_documents.join(", ")}.\n` +
+                   (dbCase.status === "blocked"
+                     ? "Please upload the missing documents using the sidebar so we can proceed with the evaluation."
+                     : "All required documents are accounted for. You can run the eligibility evaluation now."),
           type: "text"
         }
       ]);
@@ -132,6 +269,9 @@ export default function ChatPage() {
           `\n\nPlease upload the files using the sidebar to proceed.`
         );
       }
+      setReviewStatus(dbCase.review_status || "draft");
+      setReviewNotes(dbCase.review_notes || null);
+      await refreshCaseLists();
     } catch (err: any) {
       alert(`Failed to start case: ${err.message}`);
     } finally {
@@ -147,48 +287,44 @@ export default function ChatPage() {
     setUploading(true);
     try {
       const doc = await uploadDocument(file, caseId);
-      
-      // Update local tracking
-      const updatedSubmitted = [...submittedDocs];
-      if (doc.document_type && !updatedSubmitted.includes(doc.document_type)) {
-        updatedSubmitted.push(doc.document_type);
-        setSubmittedDocs(updatedSubmitted);
-      }
-      
-      // Re-read case to pull recalculated missing document checklists
-      const caseDetails = await getCaseDetails(caseId);
-      setCaseStatus(caseDetails.status);
-      setMissingDocs(caseDetails.missing_documents || []);
-      
+
       // Add status message to chat
       setMessages(prev => [
         ...prev,
         {
           id: `upload-${Date.now()}`,
           role: "assistant",
-          content: `📄 Uploaded file "${doc.original_filename}" processed successfully.\n` +
-                   `- Classified as: ${doc.document_type || "Unknown"}\n` +
-                   `- Readability check: ${doc.is_readable ? "PASS" : "FAIL"}\n` +
-                   `- OCR Quality: ${(doc.ocr_quality_score * 100).toFixed(0)}%\n` +
-                   (doc.rejection_reason ? `- Alert: ${doc.rejection_reason}` : ""),
+          content: `Document received: "${doc.original_filename}"\n\nThe file has been saved and is being processed in the background (OCR and classification). The document checklist in the sidebar will update automatically once processing is complete.` +
+                   (doc.rejection_reason ? `\n\nNote: ${doc.rejection_reason}` : ""),
           type: "text"
         }
       ]);
 
-      // Unblock or adjust demand notice state
+      // Always re-fetch the full case to get the authoritative submitted_documents list.
+      // The background OCR task may have already finished and updated the case by the time
+      // we get here — so we must not rely on the upload response's document_type (which is
+      // null immediately since processing runs asynchronously).
+      const caseDetails = await getCaseDetails(caseId);
+      setCaseStatus(caseDetails.status);
+      setSubmittedDocs(caseDetails.submitted_documents || []);
+      setMissingDocs(caseDetails.missing_documents || []);
+
+      // Update demand notice based on refreshed case state
       if (caseDetails.status !== "blocked") {
         setDemandNotice(null);
       } else {
         setDemandNotice(
-          `╔══════════════════════════════════════════════════════╗\n` +
-          `║         DOCUMENT REQUIREMENT NOTICE                  ║\n` +
-          `║         Case: ${selectedDomain} | Employee: ${currentUser?.name || "Member"}     ║\n` +
-          `╚══════════════════════════════════════════════════════╝\n\n` +
-          `The following documents are missing and required:\n` +
-          caseDetails.missing_documents.map((d: string) => `  - ${d} * REQUIRED`).join("\n") +
-          `\n\nPlease upload the files using the sidebar to proceed.`
+          `DOCUMENT REQUIREMENT NOTICE\n` +
+          `Case: ${selectedDomain} | Employee: ${currentUser?.name || "Member"}\n\n` +
+          `The following documents are still required:\n` +
+          (caseDetails.missing_documents || []).map((d: string) => `  - ${d}`).join("\n") +
+          `\n\nPlease upload the files using the sidebar to continue.`
         );
       }
+      setReviewStatus(caseDetails.review_status || "draft");
+      setReviewNotes(caseDetails.review_notes || null);
+      await refreshCaseLists();
+
     } catch (err: any) {
       alert(`Upload failed: ${err.message}`);
     } finally {
@@ -196,6 +332,7 @@ export default function ChatPage() {
       if (fileRef.current) fileRef.current.value = ""; // Reset file selector
     }
   };
+
 
   // Run assessment check
   const handleCheckEligibility = async () => {
@@ -207,15 +344,13 @@ export default function ChatPage() {
       setDecisionOutcome(res.decision);
       
       // Append findings to message list
-      let outcomeMsg = `⚖️ **Evaluation Verdict: ${res.decision}**\n` +
-                       `Status Details: ${res.eligibility_status}\n` +
-                       `Confidence rating: ${res.confidence_level}\n\n`;
+      let outcomeMsg = `Evaluation complete.\n\nVerdict: ${res.decision}\nStatus: ${res.eligibility_status}\nConfidence: ${res.confidence_level}\n\n`;
                        
       if (res.follow_up_questions?.length > 0) {
-        outcomeMsg += `**Required Additional Facts:**\n` +
-                      res.follow_up_questions.map((q: string) => `- ${q}`).join("\n");
+        outcomeMsg += `To complete this evaluation, I need a few more details from you:\n` +
+                      res.follow_up_questions.map((q: string, idx: number) => `${idx + 1}. ${q}`).join("\n");
       } else {
-        outcomeMsg += `**Administrative Notes:**\n${res.administrative_notes}`;
+        outcomeMsg += res.administrative_notes;
       }
       
       setMessages(prev => [
@@ -232,6 +367,9 @@ export default function ChatPage() {
       // Update local case checks
       const caseDetails = await getCaseDetails(caseId);
       setCaseStatus(caseDetails.status);
+      setReviewStatus(caseDetails.review_status || "draft");
+      setReviewNotes(caseDetails.review_notes || null);
+      await refreshCaseLists();
     } catch (err: any) {
       alert(`Evaluation failed: ${err.message}`);
     } finally {
@@ -253,8 +391,7 @@ export default function ChatPage() {
         {
           id: `rep-${Date.now()}`,
           role: "assistant",
-          content: `📜 **Official Decision Report PDF compiled successfully!**\n` +
-                   `You can now download the signed PDF from the sidebar panel.`,
+          content: `Your official decision report has been compiled and is ready to download.\n\nUse the button in the sidebar panel to save a signed copy of the PDF.`,
           type: "text"
         }
       ]);
@@ -288,8 +425,7 @@ export default function ChatPage() {
       // Call /api/cases/{case_id}/reply — backend parses facts, merges, re-evaluates
       const res = await sendCaseReply(caseId, userMsg);
 
-      let outcomeMsg = `⚖️ **Re-Evaluation Verdict: ${res.decision}**\n` +
-                       `Status: ${res.eligibility_status}\n`;
+      let outcomeMsg = `Re-evaluation complete.\n\nVerdict: ${res.decision}\nStatus: ${res.eligibility_status}\n`;
 
       if (res.confidence_level && res.confidence_level !== "N/A") {
         outcomeMsg += `Confidence: ${res.confidence_level}\n`;
@@ -298,10 +434,10 @@ export default function ChatPage() {
       outcomeMsg += "\n";
 
       if (res.follow_up_questions?.length > 0) {
-        outcomeMsg += `**Still need more information:**\n` +
-                      res.follow_up_questions.map((q: string) => `- ${q}`).join("\n");
+        outcomeMsg += `I still need some more information to make a definitive assessment:\n` +
+                      res.follow_up_questions.map((q: string, idx: number) => `${idx + 1}. ${q}`).join("\n");
       } else if (res.administrative_notes) {
-        outcomeMsg += `**Administrative Notes:**\n${res.administrative_notes}`;
+        outcomeMsg += res.administrative_notes;
       }
 
       if (res.decision === "Eligible" || res.decision === "Not Eligible") {
@@ -322,6 +458,9 @@ export default function ChatPage() {
       // Refresh case status
       const caseDetails = await getCaseDetails(caseId);
       setCaseStatus(caseDetails.status);
+      setReviewStatus(caseDetails.review_status || "draft");
+      setReviewNotes(caseDetails.review_notes || null);
+      await refreshCaseLists();
     } catch (err: any) {
       setMessages(prev => [
         ...prev,
@@ -381,59 +520,142 @@ export default function ChatPage() {
         {/* Left Side: Document Panel & Case setup */}
         <aside className="w-96 border-r border-slate-200 bg-white p-5 flex flex-col gap-5 overflow-y-auto shrink-0 shadow-sm">
           {!caseCreated ? (
-            /* Start Case Form */
-            <form onSubmit={handleStartCase} className="space-y-4">
-              <div>
-                <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-2">
-                  Initiate New Case
-                </h2>
-                <p className="text-xs text-slate-400">
-                  Select a rule domain and outline your administrative question.
-                </p>
-              </div>
+            <div className="space-y-5 flex flex-col h-full overflow-hidden">
+              {/* Start Case Form */}
+              <form onSubmit={handleStartCase} className="space-y-4 shrink-0">
+                <div>
+                  <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-2">
+                    Initiate New Case
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Select a rule domain and outline your administrative question.
+                  </p>
+                </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
-                  Rule Category Domain
-                </label>
-                <select
-                  value={selectedDomain}
-                  onChange={e => setSelectedDomain(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-slate-500/20"
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+                    Rule Category Domain
+                  </label>
+                  <select
+                    value={selectedDomain}
+                    onChange={e => setSelectedDomain(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-slate-500/20"
+                  >
+                    {CASE_DOMAINS.map(d => (
+                      <option key={d.value} value={d.value}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+                    Assessment Request Query
+                  </label>
+                  <textarea
+                    rows={4}
+                    required
+                    placeholder="e.g. Please evaluate employee promotion to Senior Driver grade post. Completing 6 years of service and passed exam."
+                    value={caseQuery}
+                    onChange={e => setCaseQuery(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-slate-500/20 resize-none"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loadingMessage}
+                  className="w-full py-2.5 bg-gradient-to-tr from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 text-white rounded-xl text-xs font-semibold shadow-md transition-all disabled:opacity-50"
                 >
-                  {CASE_DOMAINS.map(d => (
-                    <option key={d.value} value={d.value}>
-                      {d.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  {loadingMessage ? "Initializing Case..." : "Start Evaluation"}
+                </button>
+              </form>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
-                  Assessment Request Query
-                </label>
-                <textarea
-                  rows={4}
-                  required
-                  placeholder="e.g. Please evaluate employee promotion to Senior Driver grade post. Completing 6 years of service and passed exam."
-                  value={caseQuery}
-                  onChange={e => setCaseQuery(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-slate-500/20 resize-none"
-                />
-              </div>
+              <hr className="border-slate-100 shrink-0" />
 
-              <button
-                type="submit"
-                disabled={loadingMessage}
-                className="w-full py-2.5 bg-gradient-to-tr from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 text-white rounded-xl text-xs font-semibold shadow-md transition-all disabled:opacity-50"
-              >
-                {loadingMessage ? "Initializing Case..." : "Start Evaluation"}
-              </button>
-            </form>
+              {/* Case Lists Area */}
+              <div className="flex-1 flex flex-col overflow-hidden min-h-[250px]">
+                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 shrink-0">
+                  {currentUser?.role === "admin" ? "Personnel Officer Review Queue" : "My Assessment Case History"}
+                </h3>
+
+                {currentUser?.role === "admin" ? (
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                    {pendingCases.length === 0 ? (
+                      <div className="p-4 border border-dashed border-slate-200 rounded-xl text-center">
+                        <p className="text-[11px] text-slate-400 italic">No cases currently awaiting administrative review.</p>
+                      </div>
+                    ) : (
+                      pendingCases.map(c => (
+                        <button
+                          key={c.id}
+                          onClick={() => handleLoadCase(c.id)}
+                          className="w-full text-left p-3 rounded-xl border border-amber-200 bg-amber-50/15 hover:bg-amber-50/30 transition-all flex flex-col gap-1.5 shadow-sm"
+                        >
+                          <div className="flex justify-between items-center gap-2">
+                            <span className="text-xs font-bold text-slate-800 truncate">{c.domain}</span>
+                            <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded uppercase tracking-wide shrink-0">Review Pending</span>
+                          </div>
+                          <p className="text-[10px] text-slate-500 line-clamp-1 italic">{c.query_text}</p>
+                          <div className="flex justify-between items-center text-[9px] text-slate-400 font-mono mt-1">
+                            <span>ID: {c.id.substring(0, 8)}...</span>
+                            <span>{new Date(c.created_at).toLocaleDateString()}</span>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                    {myCases.length === 0 ? (
+                      <div className="p-4 border border-dashed border-slate-200 rounded-xl text-center">
+                        <p className="text-[11px] text-slate-400 italic">No historical case files found.</p>
+                      </div>
+                    ) : (
+                      myCases.map(c => (
+                        <button
+                          key={c.id}
+                          onClick={() => handleLoadCase(c.id)}
+                          className="w-full text-left p-3 rounded-xl border border-slate-200 bg-slate-50/30 hover:bg-slate-50/60 transition-all flex flex-col gap-1.5 shadow-sm"
+                        >
+                          <div className="flex justify-between items-center gap-2">
+                            <span className="text-xs font-bold text-slate-800 truncate">{c.domain}</span>
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide shrink-0 ${
+                              c.review_status === "approved" ? "bg-emerald-100 text-emerald-800" :
+                              c.review_status === "rejected" ? "bg-rose-100 text-rose-800" :
+                              c.review_status === "pending_review" ? "bg-amber-100 text-amber-800" :
+                              "bg-slate-200 text-slate-700"
+                            }`}>
+                              {c.review_status === "approved" ? "Approved" :
+                               c.review_status === "rejected" ? "Rejected" :
+                               c.review_status === "pending_review" ? "Pending Approval" :
+                               "Draft"}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-500 line-clamp-1 italic">{c.query_text}</p>
+                          <div className="flex justify-between items-center text-[9px] text-slate-400 font-mono mt-1">
+                            <span>ID: {c.id.substring(0, 8)}...</span>
+                            <span>{new Date(c.created_at).toLocaleDateString()}</span>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           ) : (
             /* Document Upload & Assessment Panel */
             <div className="space-y-5">
+              {/* Back button */}
+              <button
+                onClick={handleBackToCases}
+                className="flex items-center gap-1.5 py-1 px-2 border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-800 rounded-lg text-[10px] font-bold uppercase transition-all shrink-0 shadow-sm"
+              >
+                <span>← Back to Cases</span>
+              </button>
+
               <div>
                 <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded uppercase tracking-wide">
                   Active Case File
@@ -444,6 +666,28 @@ export default function ChatPage() {
                 <p className="text-[10px] text-slate-400 font-mono mt-1 select-all">
                   ID: {caseId}
                 </p>
+
+                {/* Status Badge */}
+                <div className="mt-3">
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wide border ${
+                    reviewStatus === "approved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                    reviewStatus === "rejected" ? "bg-rose-50 text-rose-700 border-rose-200" :
+                    reviewStatus === "pending_review" ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse" :
+                    "bg-slate-50 text-slate-600 border-slate-200"
+                  }`}>
+                    {reviewStatus === "approved" ? "Approved by Officer" :
+                     reviewStatus === "rejected" ? "Rejected by Officer" :
+                     reviewStatus === "pending_review" ? "Awaiting Review" :
+                     "Draft / Evaluating"}
+                  </span>
+                </div>
+
+                {reviewNotes && (
+                  <div className="mt-3 text-[10px] text-slate-600 bg-slate-50 border border-slate-150 p-2.5 rounded-lg">
+                    <p className="font-bold text-slate-500 uppercase tracking-wide text-[9px] mb-1">Officer Notes:</p>
+                    <p className="italic">"{reviewNotes}"</p>
+                  </div>
+                )}
               </div>
 
               <hr className="border-slate-100" />
@@ -501,7 +745,52 @@ export default function ChatPage() {
                   <span>Verify Rules Eligibility</span>
                 </button>
 
-                {decisionOutcome && (
+                {/* Personnel Officer HITL Decision Approval Form */}
+                {reviewStatus === "pending_review" && currentUser?.role === "admin" && (
+                  <div className="border border-amber-200 bg-amber-50/20 rounded-lg p-3 space-y-2 mt-3">
+                    <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">
+                      Personnel Officer Assessment
+                    </p>
+                    <p className="text-[9px] text-slate-500 leading-tight">
+                      Acknowledge correctness and provide mandatory justification notes to sign.
+                    </p>
+                    <textarea
+                      rows={3}
+                      value={reviewNotesInput}
+                      onChange={e => setReviewNotesInput(e.target.value)}
+                      placeholder="Write review justification (minimum 10 characters)..."
+                      className="w-full bg-white border border-slate-200 rounded p-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 resize-none"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleReviewCase("approve")}
+                        disabled={submittingReview}
+                        className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-semibold transition-all shadow-sm"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleReviewCase("reject")}
+                        disabled={submittingReview}
+                        className="flex-1 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[11px] font-semibold transition-all shadow-sm"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Awaiting signature notification for regular employees */}
+                {reviewStatus === "pending_review" && currentUser?.role !== "admin" && (
+                  <div className="w-full p-3 bg-amber-50 border border-amber-200 text-amber-800 text-center rounded-lg text-xs font-semibold">
+                    ⏳ Case Decision Pending review by Personnel Officer.
+                  </div>
+                )}
+
+                {/* PDF generation restricted to approved cases (Bypassed) */}
+                {decisionOutcome && !reportId && (
                   <button
                     type="button"
                     onClick={handleCompileReport}

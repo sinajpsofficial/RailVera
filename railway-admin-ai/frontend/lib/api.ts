@@ -186,5 +186,46 @@ export async function generateReport(caseId: string) {
 }
 
 export function getReportDownloadUrl(reportId: string) {
-  return `${API_URL}/api/reports/${reportId}/download`;
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  return `${API_URL}/api/reports/${reportId}/download${token ? `?token=${token}` : ""}`;
+}
+
+export async function getMyCases() {
+  const res = await fetch(`${API_URL}/api/cases/me`, {
+    headers: getAuthHeaders()
+  });
+  if (!res.ok) throw new Error("Failed to fetch user cases");
+  return await res.json();
+}
+
+export async function getPendingCases() {
+  const res = await fetch(`${API_URL}/api/cases/pending`, {
+    headers: getAuthHeaders()
+  });
+  if (!res.ok) throw new Error("Failed to fetch pending cases");
+  return await res.json();
+}
+
+export async function getCaseConversation(caseId: string) {
+  const res = await fetch(`${API_URL}/api/cases/${caseId}/conversation`, {
+    headers: getAuthHeaders()
+  });
+  if (!res.ok) throw new Error("Failed to fetch case conversation");
+  return await res.json();
+}
+
+export async function reviewCase(caseId: string, action: "approve" | "reject", notes: string) {
+  const res = await fetch(`${API_URL}/api/cases/${caseId}/review`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders()
+    },
+    body: JSON.stringify({ action, notes })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to submit review");
+  }
+  return await res.json();
 }

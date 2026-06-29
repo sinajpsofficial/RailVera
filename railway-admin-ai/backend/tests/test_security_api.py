@@ -25,7 +25,8 @@ async def test_malicious_upload():
         "division": "Howrah",
         "department": "Transportation"
     }
-    async with httpx.AsyncClient(base_url="http://localhost:8000") as client:
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post('/api/auth/register', json=payload)
         assert resp.status_code == 201
         # Login to get token
@@ -53,6 +54,10 @@ async def test_malicious_upload():
         assert upload_resp.status_code == 400
         assert "File type is not allowed" in upload_resp.json().get('detail', '') or "File type is not allowed" in upload_resp.text
         print('Malicious upload correctly rejected')
+
+        # Dispose database engine to avoid event loop conflicts with subsequent tests
+        from app.database.connection import engine
+        await engine.dispose()
 
 if __name__ == '__main__':
     asyncio.run(test_malicious_upload())

@@ -64,6 +64,7 @@ async def check_eligibility(
     # Update Case status
     if eval_result.decision in ["Eligible", "Not Eligible"]:
         case_obj.status = "evaluated"
+        case_obj.review_status = "pending_review"
     elif "Blocked" in eval_result.eligibility_status or eval_result.document_demand_notice:
         case_obj.status = "blocked"
     else:

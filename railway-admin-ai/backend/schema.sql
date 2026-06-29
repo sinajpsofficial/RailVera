@@ -70,6 +70,11 @@ CREATE TABLE cases (
     confidence VARCHAR(50),
     decision_reasoning TEXT,
     rules_applied TEXT[] DEFAULT '{}',
+    -- HITL review fields (Phase 5)
+    review_status VARCHAR(30) NOT NULL DEFAULT 'draft',   -- draft | pending_review | approved | rejected
+    reviewed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    review_notes TEXT,
+    reviewed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -92,6 +97,9 @@ CREATE TABLE documents (
     raw_text TEXT,
     file_size_bytes INTEGER,
     mime_type VARCHAR(100),
+    -- Background processing state: pending → processing → done | failed
+    processing_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    processing_error TEXT,
     uploaded_at TIMESTAMPTZ DEFAULT NOW(),
     processed_at TIMESTAMPTZ
 );
@@ -147,17 +155,22 @@ CREATE TABLE audit_logs (
     user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     action VARCHAR(255) NOT NULL,
     resource_type VARCHAR(100),
-    resource_id UUID,
-    ip_address INET,
-    request_payload JSONB,
-    response_status INTEGER,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+b--     ADD COLUMN IF NOT EXISTS processing_error  TEXT;
+--
+-- UPDATE documents SET processing_status = 'done' WHERE processed_at IS NOT NULL;
+-- UPDATE documents SET processing_status = 'pending' WHERE processed_at IS NULL;
+-- ─────────────────────────────────────────────────────────────────────────────
 
--- Rule dependencies
-CREATE TABLE rule_dependencies (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    rule_id VARCHAR(50) NOT NULL,
-    depends_on_rule_id VARCHAR(50) NOT NULL,
-    dependency_type VARCHAR(100)
-);
+-- ─────────────────────────────────────────────────────────────────────────────
+-- MIGRATION: Phase 5+6 — HITL review fields for existing cases table.
+-- Run ONCE on databases created before Phase 5.
+-- ─────────────────────────────────────────────────────────────────────────────
+-- ALTER TABLE cases
+--     ADD COLUMN IF NOT EXISTS review_status VARCHAR(30) NOT NULL DEFAULT 'draft',
+--     ADD COLUMN IF NOT EXISTS reviewed_by   UUID REFERENCES users(id) ON DELETE SET NULL,
+--     ADD COLUMN IF NOT EXISTS review_notes  TEXT,
+--     ADD COLUMN IF NOT EXISTS reviewed_at   TIMESTAMPTZ;
+--
+-- UPDATE cases SET review_status = 'approved'       WHERE status = 'approved';
+-- UPDATE cases SET review_status = 'pending_review' WHERE status = 'evaluated' AND review_status = 'draft';
+-- ─────────────────────────────────────────────────────────────────────────────

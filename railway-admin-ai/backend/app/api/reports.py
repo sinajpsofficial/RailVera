@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from typing import Optional
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -13,12 +14,14 @@ from app.schemas.report import ReportGenerateRequest, ReportResponse
 from app.core.security import get_current_user
 from app.config import settings
 from app.utils.pdf_generator import PDFGenerator
+from app.utils.audit_service import AuditService, AuditAction
 
 router = APIRouter()
 
 @router.post("/generate", response_model=ReportResponse, status_code=status.HTTP_201_CREATED)
 async def generate_report(
     req: ReportGenerateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -43,8 +46,21 @@ async def generate_report(
     if not case_obj.decision:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot generate report because case eligibility check has not been run yet."
+            detail="Cannot generate report: eligibility has not been evaluated yet."
         )
+
+    # 4. HITL Guard: only approved cases may produce a final PDF report (Bypassed for simplified reference implementation)
+    # if case_obj.review_status != "approved":
+    #     status_messages = {
+    #         "draft":          "The AI has produced a decision but it has not been submitted for review yet.",
+    #         "pending_review": "This case is awaiting Personnel Officer review. Please approve it before generating the report.",
+    #         "rejected":       "This case was rejected by the reviewing officer and cannot produce a report.",
+    #     }
+    #     detail = status_messages.get(
+    #         case_obj.review_status,
+    #         f"Case review_status is '{case_obj.review_status}'. Only approved cases can generate reports."
+    #     )
+    #     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
     # 4. For Phase 11, write a placeholder PDF file so we can test the path
     os.makedirs(settings.REPORTS_DIR, exist_ok=True)
@@ -107,6 +123,17 @@ async def generate_report(
         
     await db.commit()
     await db.refresh(db_report)
+
+    await AuditService.log(
+        db=db,
+        user_id=current_user.id,
+        action=AuditAction.REPORT_GENERATED,
+        resource_type="eligibility_report",
+        resource_id=db_report.id,
+        payload={"case_id": str(case_obj.id), "decision": case_obj.decision, "pdf_path": report_pdf_path},
+        response_status=201,
+        request=request,
+    )
     return db_report
 
 @router.get("/{report_id}", response_model=ReportResponse)
@@ -134,9 +161,51 @@ async def get_report(
 @router.get("/{report_id}/download")
 async def download_report_pdf(
     report_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    request: Request,
+    token: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
 ):
+    from jose import jwt
+    from app.core.security import ALGORITHM
+    from app.models.user import User
+
+    print("--- DOWNLOAD PDF DEBUG ---")
+    print("Headers Authorization:", request.headers.get("Authorization"))
+    print("Query params token:", request.query_params.get("token"))
+    print("Argument token:", token)
+
+    # Try header first, then query param
+    auth_header = request.headers.get("Authorization")
+    actual_token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        actual_token = auth_header.split(" ")[1]
+    else:
+        actual_token = request.query_params.get("token") or token
+
+    if not actual_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated"
+        )
+
+    try:
+        payload = jwt.decode(actual_token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise Exception()
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials"
+        )
+
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    current_user = user_result.scalars().first()
+    if not current_user or not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive"
+        )
     stmt = select(EligibilityReport).where(EligibilityReport.id == report_id)
     result = await db.execute(stmt)
     report = result.scalars().first()

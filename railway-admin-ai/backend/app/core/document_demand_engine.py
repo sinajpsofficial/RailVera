@@ -81,7 +81,7 @@ class DocumentDemandEngine:
 
     def _condition_met(self, condition: str, facts: Dict) -> bool:
         conditions = {
-            "if_penalty_exists":   lambda f: bool(f.get("penalty_history")),
+            "if_penalty_exists":   lambda f: f.get("penalty_history") not in [None, False, "no", "none", "false", "0", "", []],
             "if_medical_grounds":  lambda f: f.get("leave_reason") == "medical",
             "if_hospitalized":     lambda f: f.get("hospitalized") is True,
             "if_appealing":        lambda f: f.get("appeal_filed") is True,

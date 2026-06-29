@@ -100,22 +100,46 @@ class RAGPipeline:
         pairs = [[query, row.raw_text] for row in candidates]
         rerank_scores = await asyncio.to_thread(self.reranker.predict, pairs)
 
-        # CrossEncoder predict returns a numpy array, convert to floats list
+        # IMPORTANT: bge-reranker-base returns raw logits, NOT probabilities.
+        # Convert to probability using sigmoid before applying any threshold.
+        import math
+        def sigmoid(x: float) -> float:
+            return 1.0 / (1.0 + math.exp(-x))
+
         ranked = sorted(
-            zip(candidates, [float(s) for s in rerank_scores]),
+            zip(candidates, [sigmoid(float(s)) for s in rerank_scores]),
             key=lambda x: x[1],
             reverse=True
         )
 
         # Step 3: Return top_k with metadata
-        return [
+        # Use a low threshold of 0.10 (post-sigmoid) to allow relevant rules through.
+        # The vector similarity pre-filter already ensures candidates are related.
+        results = [
             {
                 "rule_id": row.rule_id,
                 "rule_name": row.rule_name,
                 "description": row.description,
-                "relevance_score": float(score),
+                "relevance_score": round(prob, 4),
             }
-            for row, score in ranked[:top_k]
-            if float(score) > 0.30  # discard irrelevant results
+            for row, prob in ranked[:top_k]
+            if prob > 0.10  # Low post-sigmoid threshold; pre-filter handles relevance
         ]
+
+        # Fallback: if reranker filtered everything, return top vector matches directly
+        if not results and candidates:
+            logger.warning(
+                "[RAG] Reranker filtered all candidates. Falling back to top vector matches."
+            )
+            results = [
+                {
+                    "rule_id": row.rule_id,
+                    "rule_name": row.rule_name,
+                    "description": row.description,
+                    "relevance_score": round(float(sim), 4),
+                }
+                for row, sim in zip(candidates[:top_k], [float(r) for _, r in ranked[:top_k]])
+            ]
+
+        return results
 

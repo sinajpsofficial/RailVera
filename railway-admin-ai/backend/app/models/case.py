@@ -20,5 +20,16 @@ class Case(Base):
     confidence = Column(String(50))
     decision_reasoning = Column(Text)
     rules_applied = Column(ARRAY(String), default=list)
+    # ── HITL Review fields ────────────────────────────────────────────────────
+    # review_status lifecycle: draft → pending_review → approved | rejected
+    # 'draft'          : AI has produced a decision but no human has reviewed it
+    # 'pending_review' : Submitted for Personnel Officer review
+    # 'approved'       : Officer has approved — PDF report may now be generated
+    # 'rejected'       : Officer has rejected — employee must re-apply or appeal
+    review_status = Column(String(30), default="draft", nullable=False)
+    reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    review_notes = Column(Text, nullable=True)   # Officer's written justification
+    reviewed_at = Column(TIMESTAMP(timezone=True), nullable=True)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+

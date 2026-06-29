@@ -23,5 +23,8 @@ class Document(Base):
     raw_text = Column(Text)
     file_size_bytes = Column(Integer)
     mime_type = Column(String(100))
+    # Background processing state: pending → processing → done | failed
+    processing_status = Column(String(20), default="pending", nullable=False)
+    processing_error = Column(Text, nullable=True)       # set if processing_status == 'failed'
     uploaded_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     processed_at = Column(TIMESTAMP(timezone=True))

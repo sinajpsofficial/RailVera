@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     RERANKER_MODEL: str = "BAAI/bge-reranker-base"
     LLM_MODEL: str = "qwen3"
+    # LLM Provider — set to "gemini" to use Google Gemini API instead of local Ollama
+    LLM_PROVIDER: str = "gemini"          # "ollama" | "gemini"
+    GEMINI_API_KEY: Optional[str] = None   # Required when LLM_PROVIDER="gemini"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+
 
     class Config:
         env_file = ".env"

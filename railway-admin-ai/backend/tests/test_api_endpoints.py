@@ -65,7 +65,16 @@ async def test_all_api_endpoints():
         assert token_data["token_type"] == "bearer"
         
         headers = {"Authorization": f"Bearer {access_token}"}
-        
+
+        async def wait_for_doc(doc_id):
+            for _ in range(50):
+                res = await ac.get(f"/api/documents/{doc_id}/status", headers=headers)
+                assert res.status_code == 200
+                data = res.json()
+                if data["processing_status"] in ["done", "failed"]:
+                    return data
+                await asyncio.sleep(0.1)
+            return data
         # ── Test 3: Get Current User (Me) ──
         print("\n[Test 3] Fetching current user details using token...")
         response = await ac.get("/api/auth/me", headers=headers)
@@ -104,6 +113,7 @@ async def test_all_api_endpoints():
         assert response.status_code == 201
         doc_data = response.json()
         doc_id = doc_data["id"]
+        doc_data = await wait_for_doc(doc_id)
         assert doc_data["document_type"] == "Service Book"
         assert doc_data["extracted_facts"].get("employee_name") == "Chad"
         
@@ -127,6 +137,7 @@ async def test_all_api_endpoints():
             headers=headers
         )
         assert response.status_code == 201
+        apar_id = response.json()["id"]
         
         # Upload Departmental Exam
         response = await ac.post(
@@ -136,6 +147,11 @@ async def test_all_api_endpoints():
             headers=headers
         )
         assert response.status_code == 201
+        exam_id = response.json()["id"]
+
+        # Wait for background processing to complete
+        await wait_for_doc(apar_id)
+        await wait_for_doc(exam_id)
         
         # Verify case is now unblocked
         response = await ac.get(f"/api/cases/{case_id}", headers=headers)
@@ -195,6 +211,10 @@ async def test_all_api_endpoints():
             # Delete user
             await db.execute(delete(User).where(User.id == uuid.UUID(user_id)))
             await db.commit()
+
+        # Dispose database engine to avoid event loop conflicts with subsequent tests
+        from app.database.connection import engine
+        await engine.dispose()
             
     print("\nAll integration tests passed successfully!")
 
