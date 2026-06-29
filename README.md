@@ -96,5 +96,5 @@ Open [http://localhost:3000](http://localhost:3000) to view the portal.
 ---
 
 <div align="center">
-Developed for the Indian Railways Personnel Department.
+Developed for the Indian Railways Personnel Department By Interns of GECPKD.
 </div>
