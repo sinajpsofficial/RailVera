@@ -155,22 +155,8 @@ CREATE TABLE audit_logs (
     user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     action VARCHAR(255) NOT NULL,
     resource_type VARCHAR(100),
-b--     ADD COLUMN IF NOT EXISTS processing_error  TEXT;
---
--- UPDATE documents SET processing_status = 'done' WHERE processed_at IS NOT NULL;
--- UPDATE documents SET processing_status = 'pending' WHERE processed_at IS NULL;
--- ─────────────────────────────────────────────────────────────────────────────
-
--- ─────────────────────────────────────────────────────────────────────────────
--- MIGRATION: Phase 5+6 — HITL review fields for existing cases table.
--- Run ONCE on databases created before Phase 5.
--- ─────────────────────────────────────────────────────────────────────────────
--- ALTER TABLE cases
---     ADD COLUMN IF NOT EXISTS review_status VARCHAR(30) NOT NULL DEFAULT 'draft',
---     ADD COLUMN IF NOT EXISTS reviewed_by   UUID REFERENCES users(id) ON DELETE SET NULL,
---     ADD COLUMN IF NOT EXISTS review_notes  TEXT,
---     ADD COLUMN IF NOT EXISTS reviewed_at   TIMESTAMPTZ;
---
--- UPDATE cases SET review_status = 'approved'       WHERE status = 'approved';
--- UPDATE cases SET review_status = 'pending_review' WHERE status = 'evaluated' AND review_status = 'draft';
--- ─────────────────────────────────────────────────────────────────────────────
+    resource_id UUID,
+    details JSONB DEFAULT '{}',
+    ip_address VARCHAR(45),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);

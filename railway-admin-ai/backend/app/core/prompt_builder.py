@@ -29,8 +29,7 @@ STRICT EVALUATION RULES YOU MUST FOLLOW:
 4. Cite rule_ids in the reasoning text naturally (e.g. "per rule PRO-001...").
 5. Keep your "summary" to one clear sentence that a non-expert can understand immediately.
 
-OUTPUT FORMAT — YOU MUST ALWAYS RESPOND WITH THIS EXACT JSON STRUCTURE:
-```json
+OUTPUT FORMAT — YOU MUST ALWAYS RESPOND WITH THIS EXACT JSON STRUCTURE (DO NOT WRAP IN MARKDOWN BACKTICKS):
 {
   "decision": "Eligible" | "Not Eligible" | "Cannot Determine" | "Documents Required",
   "confidence": "High" | "Medium" | "Low",
@@ -41,7 +40,6 @@ OUTPUT FORMAT — YOU MUST ALWAYS RESPOND WITH THIS EXACT JSON STRUCTURE:
   "risk_indicators": ["Any flags or concerns about this case."],
   "document_demand_notice": ""
 }
-```
 If documents are missing, set decision to "Documents Required" and fill document_demand_notice with a polite, clear explanation.
 Do NOT output any text outside this JSON block."""
 

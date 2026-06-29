@@ -229,3 +229,13 @@ export async function reviewCase(caseId: string, action: "approve" | "reject", n
   }
   return await res.json();
 }
+
+// ── Rules API ──────────────────────────────────────────────────────────
+
+export async function getRule(ruleId: string) {
+  const res = await fetch(`${API_URL}/api/rules/${ruleId}`, {
+    headers: getAuthHeaders()
+  });
+  if (!res.ok) throw new Error("Failed to fetch rule");
+  return await res.json();
+}

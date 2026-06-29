@@ -1,20 +1,39 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 45, 55, 72;
-  --background-start-rgb: 247, 250, 252;
-  --background-end-rgb: 237, 242, 247;
+  --foreground-rgb: 15, 23, 42; /* slate-900 */
+  --background-start-rgb: 255, 255, 255;
+  --background-end-rgb: 248, 250, 252; /* slate-50 */
 }
 
 body {
   color: rgb(var(--foreground-rgb));
   background: linear-gradient(
       to bottom,
-      transparent,
+      rgb(var(--background-start-rgb)),
       rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+    );
   min-height: 100vh;
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-railway-600 text-white font-medium py-2 px-4 rounded-lg shadow-sm transition-all duration-200 hover:bg-railway-700 hover:shadow-md active:transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-railway-500 focus:ring-offset-2;
+  }
+  .btn-secondary {
+    @apply bg-white text-slate-700 font-medium py-2 px-4 border border-slate-200 rounded-lg shadow-sm transition-all duration-200 hover:bg-slate-50 hover:border-slate-300 hover:text-railway-700 active:transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:ring-offset-2;
+  }
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-lg hover:-translate-y-1 bg-white border border-slate-100 rounded-xl overflow-hidden;
+  }
+  .input-field {
+    @apply block w-full rounded-lg border-0 py-2.5 px-3.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-railway-600 sm:text-sm sm:leading-6 transition-shadow duration-200;
+  }
 }

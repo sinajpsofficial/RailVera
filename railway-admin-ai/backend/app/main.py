@@ -2,13 +2,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from contextlib import asynccontextmanager
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func
 from pathlib import Path
 import logging
 import asyncio
 import os
 
-from app.api import auth, documents, cases, chat, eligibility, rules, reports
+from app.api import auth, documents, cases, chat, eligibility, rules, reports, admin
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +143,7 @@ app.include_router(chat.router,        prefix="/api/chat")
 app.include_router(eligibility.router, prefix="/api/eligibility")
 app.include_router(rules.router,       prefix="/api/rules")
 app.include_router(reports.router,     prefix="/api/reports")
+app.include_router(admin.router,       prefix="/api/admin")
 
 
 @app.get("/")

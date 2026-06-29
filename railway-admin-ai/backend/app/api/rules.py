@@ -10,8 +10,8 @@ POST /api/rules/search  — keyword search over rule descriptions
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, delete
-from typing import List, Optional
+from sqlalchemy import select, func, delete
+from typing import Optional
 from pathlib import Path
 import logging
 

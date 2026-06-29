@@ -14,7 +14,7 @@ from app.models.user import User
 from app.models.case import Case
 from app.models.document import Document
 from app.models.eligibility_report import EligibilityReport
-from sqlalchemy import select, delete
+from sqlalchemy import delete
 
 @pytest.mark.asyncio
 

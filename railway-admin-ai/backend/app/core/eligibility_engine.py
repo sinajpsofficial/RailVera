@@ -176,7 +176,8 @@ class EligibilityEngine:
         Handles both clean JSON and JSON embedded inside ```json ... ``` fences.
         Falls back to naive substring parsing if JSON is malformed.
         """
-        import json, re
+        import json
+        import re
         # Strip markdown code fences
         json_match = re.search(r'```(?:json)?\s*({.*?})\s*```', response, re.DOTALL)
         json_str = json_match.group(1) if json_match else response.strip()

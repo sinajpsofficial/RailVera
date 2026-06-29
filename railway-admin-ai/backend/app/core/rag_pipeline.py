@@ -2,7 +2,6 @@ from sentence_transformers import SentenceTransformer, CrossEncoder
 from sqlalchemy.ext.asyncio import AsyncSession
 from pgvector.sqlalchemy import Vector
 from typing import List, Dict
-import numpy as np
 import logging
 
 logger = logging.getLogger(__name__)
@@ -79,8 +78,7 @@ class RAGPipeline:
         query_embedding = await self.embed_text(query)
 
         # Step 1: Vector similarity search (top 20)
-        from app.models.rule import Rule
-        from sqlalchemy import select, text, bindparam
+        from sqlalchemy import text, bindparam
 
         sql = text("""
             SELECT rule_id, rule_name, description, raw_text,

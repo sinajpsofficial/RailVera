@@ -4,7 +4,6 @@ import pytesseract
 from PIL import Image
 from pdf2image import convert_from_path
 from dataclasses import dataclass
-from typing import List
 
 logger = logging.getLogger(__name__)
 

@@ -9,7 +9,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 import httpx
 from app.main import app
-from app.config import settings
 
 @pytest.mark.asyncio
 async def test_malicious_upload():

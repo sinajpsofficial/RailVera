@@ -80,7 +80,7 @@ async def test_eligibility_engine():
         print(f"Status: {res3.eligibility_status}")
         print(f"Confidence Level: {res3.confidence_level}")
         print(f"Supporting Rules count: {len(res3.supporting_rules)}")
-        print(f"Administrative Notes / Reasoning:")
+        print("Administrative Notes / Reasoning:")
         print(res3.administrative_notes)
 
         assert res3.decision in ["Eligible", "Not Eligible", "Cannot Determine"]
