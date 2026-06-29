@@ -9,6 +9,7 @@ import asyncio
 import os
 
 from app.api import auth, documents, cases, chat, eligibility, rules, reports, admin
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -122,10 +123,7 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=[origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",") if origin.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
 
+    ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,https://rail-vera.vercel.app"
+
     class Config:
         env_file = ".env"
         extra = "ignore"   # silently ignore unknown env vars
