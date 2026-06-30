@@ -45,7 +45,7 @@ class RAGPipeline:
         import httpx
         from app.config import settings
         
-        url = "https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent"
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent"
         params = {"key": settings.GEMINI_API_KEY}
         body = {
             "content": {
