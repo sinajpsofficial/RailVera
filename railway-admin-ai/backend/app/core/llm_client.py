@@ -94,41 +94,72 @@ class GeminiLLMClient(BaseLLMClient):
             }
         }
 
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(url, headers=headers, params=params, json=body)
-                response.raise_for_status()
-                data = response.json()
+        import asyncio
+        import re
 
-                # Extract text from Gemini response structure
-                candidates = data.get("candidates", [])
-                if not candidates:
-                    raise ValueError("Gemini returned no candidates in response.")
+        max_retries = 3
+        base_delay = 2.0
 
-                parts = candidates[0].get("content", {}).get("parts", [])
-                text = "".join(p.get("text", "") for p in parts).strip()
-
-                # Strip any surrounding markdown fences Gemini might add
-                if text.startswith("```json"):
-                    text = text[7:]
-                if text.startswith("```"):
-                    text = text[3:]
-                if text.endswith("```"):
-                    text = text[:-3]
-
-                return text.strip()
-
-        except httpx.HTTPStatusError as e:
-            # Log the full Gemini error body — critical for diagnosing bad API keys
+        for attempt in range(max_retries + 1):
             try:
-                err_body = e.response.json()
-            except Exception:
-                err_body = e.response.text
-            logger.error(f"Gemini API HTTP error {e.response.status_code}: {err_body}")
-            raise
-        except (httpx.ConnectError, httpx.TimeoutException) as e:
-            logger.warning(f"Gemini API connection failed: {str(e)}.")
-            raise
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    response = await client.post(url, headers=headers, params=params, json=body)
+                    response.raise_for_status()
+                    data = response.json()
+
+                    # Extract text from Gemini response structure
+                    candidates = data.get("candidates", [])
+                    if not candidates:
+                        raise ValueError("Gemini returned no candidates in response.")
+
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    text = "".join(p.get("text", "") for p in parts).strip()
+
+                    # Strip any surrounding markdown fences Gemini might add
+                    if text.startswith("```json"):
+                        text = text[7:]
+                    if text.startswith("```"):
+                        text = text[3:]
+                    if text.endswith("```"):
+                        text = text[:-3]
+
+                    return text.strip()
+
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429 and attempt < max_retries:
+                    # Attempt to parse dynamic wait time from Gemini's error message
+                    sleep_sec = base_delay * (2 ** attempt)
+                    try:
+                        err_json = e.response.json()
+                        err_msg = err_json.get("error", {}).get("message", "")
+                        match = re.search(r"retry in ([\d\.]+)s", err_msg, re.IGNORECASE)
+                        if match:
+                            sleep_sec = float(match.group(1)) + 0.5
+                    except Exception:
+                        pass
+                    
+                    logger.warning(
+                        f"Gemini API rate limit hit (429). Retrying in {sleep_sec:.2f}s... "
+                        f"(attempt {attempt + 1}/{max_retries})"
+                    )
+                    await asyncio.sleep(sleep_sec)
+                    continue
+
+                # Log the full Gemini error body — critical for diagnosing bad API keys
+                try:
+                    err_body = e.response.json()
+                except Exception:
+                    err_body = e.response.text
+                logger.error(f"Gemini API HTTP error {e.response.status_code}: {err_body}")
+                raise
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                if attempt < max_retries:
+                    sleep_sec = base_delay * (2 ** attempt)
+                    logger.warning(f"Gemini API connection failed: {e}. Retrying in {sleep_sec}s...")
+                    await asyncio.sleep(sleep_sec)
+                    continue
+                logger.warning(f"Gemini API connection failed: {str(e)}.")
+                raise
 
 
 from app.core.fallback_evaluator import FallbackEvaluator
