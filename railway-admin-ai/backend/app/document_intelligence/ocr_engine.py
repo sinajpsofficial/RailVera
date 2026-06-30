@@ -75,18 +75,136 @@ class OCREngine:
         except Exception:
             pass
 
-        # Fallback to simulation if Tesseract is not available or if it's a dummy/mock file
-        if not TESSERACT_AVAILABLE or is_dummy:
-            return self._simulate_ocr(file_path, simulation_reason="Tesseract missing or dummy file detected")
+        # Stage 1: Try Native PDF text extraction for digital/selectable PDFs
+        if ext == ".pdf":
+            native_res = self._process_pdf_native(file_path)
+            if native_res:
+                return native_res
 
+        # Stage 2: Preferred Local Engine (Tesseract) if available and not a dummy file
+        if TESSERACT_AVAILABLE and not is_dummy:
+            try:
+                if ext == ".pdf":
+                    return self._process_pdf(file_path)
+                else:
+                    return self._process_image(file_path)
+            except Exception as e:
+                logger.exception(f"Local Tesseract OCR failed: {str(e)}.")
+
+        # Stage 3: Gemini Cloud OCR fallback (highly efficient for scanned PDFs/images on Render)
+        from app.config import settings
+        if settings.GEMINI_API_KEY and not is_dummy:
+            try:
+                return self._process_gemini_ocr(file_path)
+            except Exception as e:
+                logger.warning(f"Gemini Cloud OCR failed: {str(e)}. Falling back to simulation.")
+
+        # Stage 4: Simulation fallback (for local development without Tesseract/Gemini Key)
+        return self._simulate_ocr(file_path, simulation_reason="Tesseract/Gemini missing or dummy file detected")
+
+    def _process_pdf_native(self, file_path: str) -> OCRResult:
+        """Extract native selectable text from a digital PDF."""
+        import pypdf
         try:
-            if ext == ".pdf":
-                return self._process_pdf(file_path)
-            else:
-                return self._process_image(file_path)
+            reader = pypdf.PdfReader(file_path)
+            text = ""
+            for page in reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+            
+            clean_text = text.strip()
+            # If the PDF contains selectable/digitally generated text
+            if len(clean_text) > 100:
+                logger.info(f"Successfully extracted {len(clean_text)} chars natively from PDF: {os.path.basename(file_path)}")
+                return OCRResult(
+                    text=clean_text,
+                    quality_score=1.0,
+                    page_count=len(reader.pages),
+                    is_readable=True,
+                    rejection_reason=""
+                )
         except Exception as e:
-            logger.exception(f"Real OCR processing failed: {str(e)}. Falling back to simulation.")
-            return self._simulate_ocr(file_path, simulation_reason=f"OCR error: {str(e)}")
+            logger.warning(f"Native PDF extraction failed for {file_path}: {e}")
+        return None
+
+    def _process_gemini_ocr(self, file_path: str) -> OCRResult:
+        """Performs cloud-based OCR using Google Gemini's multimodal capabilities."""
+        import base64
+        import mimetypes
+        import httpx
+        from app.config import settings
+
+        logger.info(f"Running Gemini Cloud OCR on: {os.path.basename(file_path)}")
+        
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+
+        mime_type, _ = mimetypes.guess_type(file_path)
+        if not mime_type:
+            if file_path.endswith(".pdf"):
+                mime_type = "application/pdf"
+            elif file_path.endswith(".png"):
+                mime_type = "image/png"
+            else:
+                mime_type = "image/jpeg"
+
+        encoded_file = base64.b64encode(file_data).decode("utf-8")
+
+        # Use the configured gemini model or default to gemini-2.5-flash
+        model = settings.GEMINI_MODEL or "gemini-2.5-flash"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        params = {"key": settings.GEMINI_API_KEY}
+        headers = {"Content-Type": "application/json"}
+        body = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "inlineData": {
+                                "mimeType": mime_type,
+                                "data": encoded_file
+                            }
+                        },
+                        {
+                            "text": "Extract all readable text from this document. Maintain the structural layout of the text. Do not add any conversational text, notes, or intros—output only the extracted document text."
+                        }
+                    ]
+                }
+            ]
+        }
+
+        with httpx.Client(timeout=60.0) as client:
+            response = client.post(url, headers=headers, params=params, json=body)
+            response.raise_for_status()
+            data = response.json()
+            
+            extracted_text = ""
+            candidates = data.get("candidates", [])
+            if candidates:
+                parts = candidates[0].get("content", {}).get("parts", [])
+                if parts:
+                    extracted_text = parts[0].get("text", "").strip()
+            
+            if not extracted_text:
+                raise ValueError("No text extracted from Gemini API response.")
+
+            page_count = 1
+            if mime_type == "application/pdf":
+                try:
+                    import pypdf
+                    reader = pypdf.PdfReader(file_path)
+                    page_count = len(reader.pages)
+                except Exception:
+                    pass
+
+            return OCRResult(
+                text=extracted_text,
+                quality_score=0.98,
+                page_count=page_count,
+                is_readable=True,
+                rejection_reason=""
+            )
 
     def _process_pdf(self, path: str) -> OCRResult:
         # Note: pdf2image requires Poppler installed in system path
