@@ -6,7 +6,8 @@ import { getMe, createCase, getCaseDetails, uploadDocument, getDocumentStatus, r
 import DocumentStatusTracker from "@/components/documents/DocumentStatusTracker";
 import DocumentDemandNotice from "@/components/chat/DocumentDemandNotice";
 import MessageBubble from "@/components/chat/MessageBubble";
-import { Award, LogOut, UploadCloud, AlertCircle, FileCheck, CheckSquare, FileText, Send, HelpCircle } from "lucide-react";
+import { LogOut, UploadCloud, AlertCircle, FileCheck, CheckSquare, FileText, Send, HelpCircle } from "lucide-react";
+import iconPng from "@/app/icon.png";
 
 interface Message {
   id: string;
@@ -55,6 +56,7 @@ export default function ChatPage() {
 
   // Assessment & Report states
   const [checkingEligibility, setCheckingEligibility] = useState(false);
+  const [progressPercentage, setProgressPercentage] = useState(0);
   const [decisionOutcome, setDecisionOutcome] = useState<string | null>(null);
   const [compilingReport, setCompilingReport] = useState(false);
   const [reportId, setReportId] = useState<string | null>(null);
@@ -443,8 +445,31 @@ export default function ChatPage() {
     if (!caseId) return;
 
     setCheckingEligibility(true);
+    setProgressPercentage(0);
+
+    // Start simulated progress
+    const intervalTime = 100; // ms
+    let currentProgress = 0;
+    
+    const timer = setInterval(() => {
+      currentProgress += Math.floor(Math.random() * 8) + 3; // Increments by 3-10%
+      if (currentProgress > 95) {
+        currentProgress = 95; // cap until response returns
+        clearInterval(timer);
+      }
+      setProgressPercentage(currentProgress);
+    }, intervalTime);
+
     try {
       const res = await runEligibilityCheck(caseId);
+      
+      // Stop the timer and complete the progress
+      clearInterval(timer);
+      setProgressPercentage(100);
+      
+      // Brief delay for the user to see 100% complete
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       setDecisionOutcome(res.decision);
       
       // Append findings to message list
@@ -475,6 +500,8 @@ export default function ChatPage() {
       setReviewNotes(caseDetails.review_notes || null);
       await refreshCaseLists();
     } catch (err: any) {
+      clearInterval(timer);
+      setProgressPercentage(0);
       alert(`Evaluation failed: ${err.message}`);
     } finally {
       setCheckingEligibility(false);
@@ -599,7 +626,7 @@ export default function ChatPage() {
       {/* Header Bar */}
       <header className="flex items-center justify-between bg-gradient-to-r from-slate-950 to-slate-800 text-white px-6 py-4 border-b border-slate-900 shadow-md shrink-0">
         <div className="flex items-center gap-3">
-          <Award className="w-6.5 h-6.5 text-amber-400" />
+          <img src={iconPng.src} className="w-6.5 h-6.5 object-contain" alt="RailVera Logo" />
           <div>
             <h1 className="text-sm font-bold tracking-wide uppercase">
               Indian Railways Decision Support AI Portal
@@ -842,11 +869,29 @@ export default function ChatPage() {
                   type="button"
                   onClick={handleCheckEligibility}
                   disabled={checkingEligibility || uploading}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 bg-navy text-white hover:bg-navy-light rounded-lg text-xs font-semibold shadow-sm transition-all disabled:opacity-40"
+                  className="w-full flex flex-col items-center justify-center gap-1 py-2 bg-navy text-white hover:bg-navy-light rounded-lg text-xs font-semibold shadow-sm transition-all disabled:opacity-40 relative overflow-hidden"
                   style={{ backgroundColor: "#1A365D" }}
                 >
-                  <CheckSquare className="w-4 h-4" />
-                  <span>Verify Rules Eligibility</span>
+                  {/* Background progress bar */}
+                  {checkingEligibility && (
+                    <div 
+                      className="absolute left-0 top-0 bottom-0 bg-white/15 transition-all duration-300 ease-out pointer-events-none"
+                      style={{ width: `${progressPercentage}%` }}
+                    />
+                  )}
+                  <div className="flex items-center gap-1.5 z-10">
+                    {checkingEligibility ? (
+                      <span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></span>
+                    ) : (
+                      <CheckSquare className="w-4 h-4" />
+                    )}
+                    <span>
+                      {checkingEligibility 
+                        ? `Verifying... ${progressPercentage}%` 
+                        : "Verify Rules Eligibility"
+                      }
+                    </span>
+                  </div>
                 </button>
 
                 {/* Personnel Officer HITL Decision Approval Form */}
@@ -933,7 +978,7 @@ export default function ChatPage() {
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full text-center max-w-md mx-auto text-slate-400 gap-3">
                 <div className="p-4 rounded-3xl bg-white border border-slate-200 shadow-sm text-slate-500">
-                  <Award className="w-8 h-8 text-amber-500 mx-auto" />
+                  <img src={iconPng.src} className="w-8 h-8 object-contain mx-auto" alt="RailVera Logo" />
                 </div>
                 <h3 className="text-base font-bold text-slate-700 mt-2">
                   Administrative Decision Assistant

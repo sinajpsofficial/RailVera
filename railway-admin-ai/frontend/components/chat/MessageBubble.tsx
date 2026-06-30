@@ -1,5 +1,6 @@
 import React from "react";
-import { User, Award } from "lucide-react";
+import { User } from "lucide-react";
+import iconPng from "@/app/icon.png";
 
 interface Message {
   id: string;
@@ -203,7 +204,7 @@ export default function MessageBubble({ message }: Props) {
         }`}
         style={!isUser ? { backgroundColor: "#1A365D" } : {}}
       >
-        {isUser ? <User className="w-4 h-4" /> : <Award className="w-4 h-4 text-amber-400" />}
+        {isUser ? <User className="w-4 h-4" /> : <img src={iconPng.src} className="w-5 h-5 object-contain" alt="RailVera AI" />}
       </div>
 
       {/* Bubble Body */}

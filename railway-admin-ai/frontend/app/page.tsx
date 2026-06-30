@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { login, register, getMe } from "@/lib/api";
-import { Award, Lock, Mail, User, ShieldAlert, ArrowRight, UserPlus } from "lucide-react";
+import { Lock, Mail, User, ShieldAlert, ArrowRight, UserPlus } from "lucide-react";
+import iconPng from "./icon.png";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -88,7 +89,7 @@ export default function LoginPage() {
         {/* Banner Title */}
         <div className="bg-gradient-to-br from-slate-800 to-slate-950 p-8 text-center text-white border-b border-slate-800">
           <div className="inline-flex p-3 rounded-2xl bg-white/10 mb-4 backdrop-blur-md">
-            <Award className="w-8 h-8 text-amber-400" />
+            <img src={iconPng.src} className="w-8 h-8 object-contain" alt="RailVera Logo" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight font-sans">
             Indian Railways
