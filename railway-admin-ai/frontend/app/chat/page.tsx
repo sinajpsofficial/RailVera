@@ -626,7 +626,7 @@ export default function ChatPage() {
       {/* Header Bar */}
       <header className="flex items-center justify-between bg-gradient-to-r from-slate-950 to-slate-800 text-white px-6 py-4 border-b border-slate-900 shadow-md shrink-0">
         <div className="flex items-center gap-3">
-          <img src={iconPng.src} className="w-6.5 h-6.5 object-contain" alt="RailVera Logo" />
+          <img src={iconPng.src} className="w-7 h-7 object-contain" alt="RailVera Logo" />
           <div>
             <h1 className="text-sm font-bold tracking-wide uppercase">
               Indian Railways Decision Support AI Portal
