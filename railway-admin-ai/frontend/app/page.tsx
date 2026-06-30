@@ -104,21 +104,19 @@ export default function LoginPage() {
           <div className="flex rounded-xl bg-slate-100 p-1 mb-6">
             <button
               onClick={() => { setIsLogin(true); setError(null); }}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all ${
-                isLogin
+              className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all ${isLogin
                   ? "bg-white text-slate-900 shadow-sm"
                   : "text-slate-500 hover:text-slate-800"
-              }`}
+                }`}
             >
               Sign In
             </button>
             <button
               onClick={() => { setIsLogin(false); setError(null); }}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all ${
-                !isLogin
+              className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all ${!isLogin
                   ? "bg-white text-slate-900 shadow-sm"
                   : "text-slate-500 hover:text-slate-800"
-              }`}
+                }`}
             >
               Register
             </button>
@@ -126,11 +124,10 @@ export default function LoginPage() {
 
           {/* Error / Success Alert */}
           {error && (
-            <div className={`flex gap-2 text-xs rounded-xl p-3 mb-5 border ${
-              error.includes("successfully")
+            <div className={`flex gap-2 text-xs rounded-xl p-3 mb-5 border ${error.includes("successfully")
                 ? "bg-emerald-50 text-emerald-800 border-emerald-100"
                 : "bg-rose-50 text-rose-800 border-rose-100"
-            }`}>
+              }`}>
               <ShieldAlert className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>

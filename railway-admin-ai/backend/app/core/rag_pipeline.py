@@ -89,7 +89,6 @@ class RAGPipeline:
             text = f"{rule.rule_name}. {rule.description}"
             rule.embedding = await self.embed_text(text)
             embedded_count += 1
-            # Cooperatively yield control back to the event loop every few items
             if embedded_count % 5 == 0:
                 await asyncio.sleep(0.01)
 
@@ -156,6 +155,7 @@ class RAGPipeline:
             reverse=True
         )
 
+        # Step 3: Return top_k with metadata
         results = [
             {
                 "rule_id": row.rule_id,

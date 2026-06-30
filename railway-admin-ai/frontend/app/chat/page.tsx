@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { getMe, createCase, getCaseDetails, uploadDocument, runEligibilityCheck, generateReport, getReportDownloadUrl, logout, sendCaseReply, getMyCases, getPendingCases, getCaseConversation, reviewCase } from "@/lib/api";
+import { getMe, createCase, getCaseDetails, uploadDocument, getDocumentStatus, runEligibilityCheck, generateReport, getReportDownloadUrl, logout, sendCaseReply, getMyCases, getPendingCases, getCaseConversation, reviewCase } from "@/lib/api";
 
 import DocumentStatusTracker from "@/components/documents/DocumentStatusTracker";
 import DocumentDemandNotice from "@/components/chat/DocumentDemandNotice";
@@ -300,10 +300,7 @@ export default function ChatPage() {
         }
       ]);
 
-      // Always re-fetch the full case to get the authoritative submitted_documents list.
-      // The background OCR task may have already finished and updated the case by the time
-      // we get here — so we must not rely on the upload response's document_type (which is
-      // null immediately since processing runs asynchronously).
+      // Fetch the initial full case (normally pending/processing at this point)
       const caseDetails = await getCaseDetails(caseId);
       setCaseStatus(caseDetails.status);
       setSubmittedDocs(caseDetails.submitted_documents || []);
@@ -324,6 +321,113 @@ export default function ChatPage() {
       setReviewStatus(caseDetails.review_status || "draft");
       setReviewNotes(caseDetails.review_notes || null);
       await refreshCaseLists();
+
+      // Start polling the document status in the background
+      const pollDocStatus = async (docId: string, filename: string) => {
+        let attempts = 0;
+        const maxAttempts = 30; // 45 seconds max
+        const interval = 1500; // 1.5 seconds
+
+        const checkStatus = async () => {
+          try {
+            const statusRes = await getDocumentStatus(docId);
+            const status = statusRes.processing_status;
+
+            if (status === "done") {
+              // Refresh case details once processing is finished
+              const refreshedCase = await getCaseDetails(caseId);
+              setCaseStatus(refreshedCase.status);
+              setSubmittedDocs(refreshedCase.submitted_documents || []);
+              setMissingDocs(refreshedCase.missing_documents || []);
+
+              // Update demand notice based on refreshed case state
+              if (refreshedCase.status !== "blocked") {
+                setDemandNotice(null);
+              } else {
+                setDemandNotice(
+                  `DOCUMENT REQUIREMENT NOTICE\n` +
+                  `Case: ${refreshedCase.domain} | Employee: ${currentUser?.name || "Member"}\n\n` +
+                  `The following documents are still required:\n` +
+                  (refreshedCase.missing_documents || []).map((d: string) => `  - ${d}`).join("\n") +
+                  `\n\nPlease upload the files using the sidebar to continue.`
+                );
+              }
+              setReviewStatus(refreshedCase.review_status || "draft");
+              setReviewNotes(refreshedCase.review_notes || null);
+              await refreshCaseLists();
+
+              // Add a processing complete message to chat
+              const isVerified = statusRes.is_verified;
+              const docType = statusRes.document_type;
+              
+              if (docType === "Unknown" || !isVerified) {
+                let warningMsg = `⚠️ Unrecognized document: "${filename}" was processed but could not be verified as any required type.\n\n`;
+                if (statusRes.rejection_reason) {
+                  warningMsg += `Reason: ${statusRes.rejection_reason}\n\n`;
+                }
+                warningMsg += `Please ensure the document contains clear text and matches one of the required categories.`;
+                
+                setMessages(prev => [
+                  ...prev,
+                  {
+                    id: `verify-fail-${Date.now()}`,
+                    role: "assistant",
+                    content: warningMsg,
+                    type: "text"
+                  }
+                ]);
+              } else {
+                setMessages(prev => [
+                  ...prev,
+                  {
+                    id: `verify-success-${Date.now()}`,
+                    role: "assistant",
+                    content: `✅ Document "${filename}" verified successfully as: **${docType}**. Checklist updated!`,
+                    type: "text"
+                  }
+                ]);
+              }
+
+            } else if (status === "failed") {
+              setMessages(prev => [
+                ...prev,
+                {
+                  id: `verify-error-${Date.now()}`,
+                  role: "assistant",
+                  content: `❌ Processing failed for document "${filename}". Error: ${statusRes.processing_error || "Unknown processing error"}`,
+                  type: "text"
+                }
+              ]);
+            } else {
+              // Still pending or processing, schedule next poll
+              attempts++;
+              if (attempts < maxAttempts) {
+                setTimeout(checkStatus, interval);
+              } else {
+                setMessages(prev => [
+                  ...prev,
+                  {
+                    id: `verify-timeout-${Date.now()}`,
+                    role: "assistant",
+                    content: `⏳ Processing timed out for document "${filename}". Please try again or refresh the page later.`,
+                    type: "text"
+                  }
+                ]);
+              }
+            }
+          } catch (error) {
+            console.error("Error polling document status:", error);
+            attempts++;
+            if (attempts < maxAttempts) {
+              setTimeout(checkStatus, interval);
+            }
+          }
+        };
+
+        setTimeout(checkStatus, interval);
+      };
+
+      pollDocStatus(doc.id, file.name);
 
     } catch (err: any) {
       alert(`Upload failed: ${err.message}`);

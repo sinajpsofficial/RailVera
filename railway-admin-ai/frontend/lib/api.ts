@@ -149,6 +149,14 @@ export async function uploadDocument(file: File, caseId: string) {
   return await res.json();
 }
 
+export async function getDocumentStatus(documentId: string) {
+  const res = await fetch(`${API_URL}/api/documents/${documentId}/status`, {
+    headers: getAuthHeaders()
+  });
+  if (!res.ok) throw new Error("Failed to fetch document status");
+  return await res.json();
+}
+
 // ── Eligibility API ────────────────────────────────────────────────────
 
 export async function runEligibilityCheck(caseId: string) {

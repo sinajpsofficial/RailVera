@@ -123,9 +123,11 @@ async def _process_document_background(document_id: UUID, storage_path: str, cas
                 case_obj = case_result.scalars().first()
                 if case_obj:
                     submitted = list(case_obj.submitted_documents or [])
-                    if normalized_type not in submitted:
-                        submitted.append(normalized_type)
-                        case_obj.submitted_documents = submitted
+                    # Only append to submitted list if it is a valid classified type and verified
+                    if normalized_type != "Unknown" and doc.is_verified:
+                        if normalized_type not in submitted:
+                            submitted.append(normalized_type)
+                            case_obj.submitted_documents = submitted
 
                     facts = dict(case_obj.extracted_facts or {})
                     facts.update(extracted_facts)
